@@ -1,0 +1,162 @@
+- hosts: localhost
+  tasks:
+
+  - name: Create a new VPC
+    ec2_vpc:
+      state: present
+      cidr_block: 172.23.0.0/16
+      resource_tags:
+        Name: k8s-vpc
+      region: eu-west-1
+      internet_gateway: True
+      subnets:
+        - cidr: 172.23.1.0/24
+          az: eu-west-1a
+      route_tables:
+        - subnets:
+            - 172.23.1.0/24
+          routes:
+            - dest: 0.0.0.0/0
+              gw: igw
+    register: vpc
+
+  - name: Create a new Subnet
+    ec2_vpc_subnet:
+      state: present
+      vpc_id: "{{ vpc.vpc_id }}"
+      cidr: 172.23.1.0/24
+      region: eu-west-1
+      resource_tags:
+        Name: k8s-subnet
+    register: subnet
+
+  - name: get my public IP
+    ipify_facts:
+
+  - name: Create a new security group
+    ec2_group:
+      name: K8s security group
+      description: It allows ports 22, 80 and 443 in and 80 and 443 out
+      vpc_id: "{{vpc.vpc_id}}"
+      region: eu-west-1
+      rules:
+        - proto: tcp
+          from_port: 80
+          to_port: 80
+          cidr_ip: 0.0.0.0/0
+        - proto: tcp
+          from_port: 22
+          to_port: 22
+          cidr_ip: "{{ipify_public_ip}}/32"
+        - proto: tcp
+          from_port: 443
+          to_port: 443
+          cidr_ip: 0.0.0.0/0
+        - proto: all
+          group_name: K8s security group
+      rules_egress:
+        - proto: tcp
+          from_port: 80
+          to_port: 80
+          cidr_ip: 0.0.0.0/0
+        - proto: tcp
+          from_port: 443
+          to_port: 443
+          cidr_ip: 0.0.0.0/0
+        - proto: all
+          group_name: K8s security group
+
+  - name: Create instances
+    ec2:
+      region: eu-west-1
+      key_name: k8s-keypair
+      instance_type: t2.micro
+      image: 	ami-844e0bf7
+      wait: yes
+      group: "K8s security group"
+      count: 2
+      vpc_subnet_id: "{{ subnet.subnet.id }}"
+      assign_public_ip: yes
+    register: ec2
+  - name: Add new instances to launched group
+    add_host: hostname={{ item.public_ip }} groupname=launched
+    with_items: "{{ec2.instances}}"
+  - name: Add new instance to master group
+    add_host: hostname={{ ec2.instances.0.public_ip }} groupname=master
+  - name: Add new instance to minions group
+    add_host: hostname={{ ec2.instances.1.public_ip }} groupname=minions
+  - name: Wait for SSH to come up
+    wait_for: host={{ item.public_dns_name }} port=22 delay=60 timeout=320 state=started
+    with_items: '{{ec2.instances}}'
+
+- hosts: launched
+  remote_user: ubuntu
+  become: true
+  gather_facts: no
+  pre_tasks:
+    - name: install python2 because Ubuntu has python 3
+      raw: sudo apt-get -y install python-simplejson
+
+  tasks:
+
+    - name: Add k8s packages key
+      apt_key: url=https://packages.cloud.google.com/apt/doc/apt-key.gpg state=present
+
+    - name: Add Kubernetes apt list
+      copy: src=./files/kubernetes.list dest=/etc/apt/sources.list.d/kubernetes.list
+
+    - name: Update cache
+      apt: update_cache=yes
+
+    - name: Upgrade
+      apt: upgrade=dist
+
+    - name: install docker
+      apt: name=docker.io state=present
+
+    - name: install kubelet
+      apt: name=kubelet state=present
+
+    - name: install kubectl
+      apt: name=kubectl state=present
+
+    - name: install kubeadm
+      apt: name=kubeadm state=present
+
+    - name: install kubernetes-cni
+      apt: name=kubernetes-cni state=present
+
+- hosts: master
+  remote_user: ubuntu
+  become: true
+  tasks:
+
+    - name: Launch kubeadm in master
+      shell: kubeadm init|grep 'kubeadm join'
+      register: output_kubeadm
+
+    - set_fact:
+        kubeadm_cmd: "{{output_kubeadm.stdout}}"
+    - debug: msg="Output {{kubeadm_cmd}}"
+
+    - name: Use master as a minion too
+      command: kubectl taint nodes --all dedicated-
+
+- hosts: minions
+  remote_user: ubuntu
+  become: true
+  tasks:
+
+    - set_fact:
+        kubeadm: "{{hostvars[groups['master'][0]].kubeadm_cmd}}"
+    - debug: msg="Output {{kubeadm}}"
+    - name: Join to master
+      command: "{{kubeadm}}"
+
+- hosts: master
+  remote_user: ubuntu
+  become: true
+  tasks:
+
+    - name:  Installing a pod network
+      command: kubectl apply -f https://git.io/weave-kube
