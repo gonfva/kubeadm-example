@@ -36,13 +36,17 @@
   - name: Create a new security group
     ec2_group:
       name: K8s security group
-      description: It allows ports 22, 80 and 443 in and 80 and 443 out
+      description: It allows ports 22, 80,8080 and 443 in and 80 and 443 out
       vpc_id: "{{vpc.vpc_id}}"
       region: eu-west-1
       rules:
         - proto: tcp
           from_port: 80
           to_port: 80
+          cidr_ip: 0.0.0.0/0
+        - proto: tcp
+          from_port: 8080
+          to_port: 8080
           cidr_ip: 0.0.0.0/0
         - proto: tcp
           from_port: 22
