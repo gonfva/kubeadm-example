@@ -136,7 +136,7 @@
   tasks:
 
     - name: Launch kubeadm in master
-      shell: kubeadm init|grep 'kubeadm join'
+      shell: "kubeadm init --api-advertise-addresses {{ ansible_eth0.ipv4.address }} |grep 'kubeadm join'"
       register: output_kubeadm
 
     - set_fact:
