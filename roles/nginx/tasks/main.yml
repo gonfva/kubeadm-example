@@ -1,0 +1,14 @@
+- name: Add Kubernetes repo
+  copy: src=./files/nginx.yaml dest=/tmp/nginx.yaml
+
+- name: Create a valid kube config
+  shell: |
+    mkdir -p $HOME/.kube
+    cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+    chown $(id -u):$(id -g) $HOME/.kube/config
+
+- name: Installing an NGINX pod
+  command: kubectl apply -f /tmp/nginx.yaml
+
+- name: Output the address
+  command: kubectl get pods --selector=app=nginx -o jsonpath='{.items[*].status.hostIP}'

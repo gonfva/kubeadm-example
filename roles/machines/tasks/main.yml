@@ -1,0 +1,61 @@
+- name: Add Kubernetes repo
+  copy: src=./files/repo.list dest=/etc/yum.repos.d/kubernetes.repo
+
+- name: Add containers repo
+  copy: src=./files/repo1.list dest=/etc/yum.repos.d/containers.repo
+
+- name: Add crio repo
+  copy: src=./files/repo2.list dest=/etc/yum.repos.d/crio.repo
+
+- name: upgrade all packages
+  yum: name=* state=latest update_cache=yes
+
+- name: Load kernel modules at startup (shameslessly copy-paste from https://kubernetes.io/docs/setup/production-environment/container-runtimes/)
+  shell: |
+    cat <<EOF | sudo tee /etc/modules-load.d/crio.conf
+    overlay
+    br_netfilter
+    EOF
+
+- name: Load kernel modules now
+  shell: modprobe overlay && modprobe br_netfilter
+
+- name: Load systemctl params at startup
+  shell: |
+    cat <<EOF | sudo tee /etc/sysctl.d/99-kubernetes-cri.conf
+    net.bridge.bridge-nf-call-iptables  = 1
+    net.ipv4.ip_forward                 = 1
+    net.bridge.bridge-nf-call-ip6tables = 1
+    EOF
+
+- name: Load systemctl params now
+  shell: sysctl --system
+
+- name: install cri-o
+  yum: name=cri-o state=present
+
+- name: Enable cri-o
+  ansible.builtin.systemd:
+    name: crio
+    state: started
+    enabled: yes
+
+- name: install kube packages
+  yum:
+    name:
+      - kubelet
+      - kubeadm
+      - kubectl
+      - iproute-tc
+    disable_excludes: kubernetes
+    state: present
+
+- name: Enable kubelet
+  ansible.builtin.systemd:
+    name: kubelet
+    state: started
+    enabled: yes
+
+- name: Change hostname
+  ansible.builtin.hostname:
+    name: "{{ hostname }}"

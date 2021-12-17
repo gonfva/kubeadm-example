@@ -26,8 +26,7 @@ I prefer to use :
 + ALB to connect to the instance instead of port in the machine.
 + (not to use) name for instances (pets vs cattle).
 + If we use names, we may want to use inventory (ansible mechanism).
-+ Ansible roles instead of a big playbook
-+ We may want at least variables.
++ We may want some variables.
 + There is no multi-AZ.
 + I prefer to have everything on private subnets and have public subnets with elastic load balancer in a public subnet connecting to the cluster and maybe a bastion host. In this example, all the instances have ips in a specific range but also a public IP.
 

@@ -1,0 +1,8 @@
+- name: Set kubeadm command
+  set_fact:
+    kubeadm: "{{hostvars[groups['master'][0]].kubeadm_cmd}}"
+- name: Debug kubeadm command
+  debug:
+    msg: "Output {{kubeadm}}"
+- name: Join to master
+  command: "{{kubeadm}}"
