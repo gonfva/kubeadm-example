@@ -1,155 +1,193 @@
 - hosts: localhost
   tasks:
+    - name: Create a new VPC
+      ec2_vpc_net:
+        name: Kubeadm_vpc
+        state: present
+        cidr_block: "10.144.0.0/16"
+        resource_tags:
+          Name: k8s-vpc
+        region: eu-west-1
+      register: vpc
 
-  - name: Create a new VPC
-    ec2_vpc:
-      state: present
-      cidr_block: 172.23.0.0/16
-      resource_tags:
-        Name: k8s-vpc
-      region: eu-west-1
-      internet_gateway: True
-      subnets:
-        - cidr: 172.23.1.0/24
-          az: eu-west-1a
-      route_tables:
-        - subnets:
-            - 172.23.1.0/24
-          routes:
-            - dest: 0.0.0.0/0
-              gw: igw
-    register: vpc
+    - name: Create a new Subnet
+      ec2_vpc_subnet:
+        state: present
+        vpc_id: "{{ vpc.vpc.id }}"
+        cidr: 10.144.0.0/18
+        tags:
+          Name: Kubeadm_subnet
+      register: subnet
 
-  - name: Create a new Subnet
-    ec2_vpc_subnet:
-      state: present
-      vpc_id: "{{ vpc.vpc_id }}"
-      cidr: 172.23.1.0/24
-      region: eu-west-1
-      resource_tags:
-        Name: k8s-subnet
-    register: subnet
+    - name: Create a new IGW
+      ec2_vpc_igw:
+        vpc_id: "{{ vpc.vpc.id }}"
+        state: present
+        tags:
+          name: Kubeadm_IGW
+      register: igw
 
-  - name: get my public IP
-    ipify_facts:
+    - name: Set up the route table
+      ec2_vpc_route_table:
+        vpc_id: "{{ vpc.vpc.id }}"
+        tags:
+          Name: Kubeadm_route_table_Public
+        subnets:
+          - "{{ subnet.subnet.id }}"
+        routes:
+          - dest: 0.0.0.0/0
+            gateway_id: "{{ igw.gateway_id }}"
+      register: public_route_table
 
-  - name: Create a new security group
-    ec2_group:
-      name: K8s security group
-      description: It allows ports 22, 80,8080 and 443 in and 80 and 443 out
-      vpc_id: "{{vpc.vpc_id}}"
-      region: eu-west-1
-      rules:
-        - proto: tcp
-          from_port: 80
-          to_port: 80
-          cidr_ip: 0.0.0.0/0
-        - proto: tcp
-          from_port: 8080
-          to_port: 8080
-          cidr_ip: 0.0.0.0/0
-        - proto: tcp
-          from_port: 22
-          to_port: 22
-          cidr_ip: "{{ipify_public_ip}}/32"
-        - proto: tcp
-          from_port: 443
-          to_port: 443
-          cidr_ip: 0.0.0.0/0
-        - proto: all
-          group_name: K8s security group
-      rules_egress:
-        - proto: tcp
-          from_port: 80
-          to_port: 80
-          cidr_ip: 0.0.0.0/0
-        - proto: tcp
-          from_port: 443
-          to_port: 443
-          cidr_ip: 0.0.0.0/0
-        - proto: all
-          group_name: K8s security group
+    - name: get my public IP
+      ipify_facts:
 
-  - name: Create instances
-    ec2:
-      region: eu-west-1
-      key_name: k8s-keypair
-      instance_type: t2.micro
-      image: 	ami-844e0bf7
-      wait: yes
-      group: "K8s security group"
-      count: 2
-      vpc_subnet_id: "{{ subnet.subnet.id }}"
-      assign_public_ip: yes
-    register: ec2
-  - name: Add new instances to launched group
-    add_host: hostname={{ item.public_ip }} groupname=launched
-    with_items: "{{ec2.instances}}"
-  - name: Add new instance to master group
-    add_host: hostname={{ ec2.instances.0.public_ip }} groupname=master
-  - name: Add new instance to minions group
-    add_host: hostname={{ ec2.instances.1.public_ip }} groupname=minions
-  - name: Wait for SSH to come up
-    wait_for: host={{ item.public_dns_name }} port=22 delay=60 timeout=320 state=started
-    with_items: '{{ec2.instances}}'
+    - name: Create a new security group
+      ec2_group:
+        name: K8s security group
+        description: It allows ports 22, 30000 and 443 in and 80 and 443 out
+        vpc_id: "{{vpc.vpc.id}}"
+        region: eu-west-1
+        rules:
+          - proto: tcp
+            from_port: 30000
+            to_port: 30000
+            cidr_ip: 0.0.0.0/0
+          - proto: tcp
+            from_port: 22
+            to_port: 22
+            cidr_ip: "{{ipify_public_ip}}/32"
+          - proto: all
+            group_name: K8s security group
+        rules_egress:
+          - proto: tcp
+            from_port: 80
+            to_port: 80
+            cidr_ip: 0.0.0.0/0
+          - proto: tcp
+            from_port: 443
+            to_port: 443
+            cidr_ip: 0.0.0.0/0
+          - proto: all
+            group_name: K8s security group
+
+    - name: Create instances
+      ec2:
+        region: eu-west-1
+        key_name: k8s-keypair
+        instance_type: t3.small
+        image: ami-0426e00f13491b715 #Centos8 in Ireland
+        wait: yes
+        group: "K8s security group"
+        vpc_subnet_id: "{{ subnet.subnet.id }}"
+        assign_public_ip: yes
+        instance_tags:
+          Name: k8sserver
+        count_tag:
+          Name: k8sserver
+        exact_count: 3
+      register: ec2
+    - name: Add new instances to launched group
+      add_host: hostname={{ item.public_ip }} groupname=launched
+      with_items: "{{ec2.tagged_instances}}"
+    - name: Add new instance to master group
+      add_host: hostname={{ ec2.tagged_instances.0.public_ip }} groupname=master
+    - name: Add new instance to minions group
+      add_host: hostname={{ item.public_ip }} groupname=minions
+      with_items: "{{ec2.tagged_instances[1:] }}"
+    - name: Wait for SSH to come up
+      wait_for: host={{ item.public_dns_name }} port=22 timeout=480 state=started
+      with_items: "{{ec2.tagged_instances}}"
 
 - hosts: launched
-  remote_user: ubuntu
+  remote_user: centos
   become: true
   gather_facts: no
-  pre_tasks:
-    - name: install python2 because Ubuntu has python 3
-      raw: sudo apt-get -y install python-simplejson
 
   tasks:
+    - name: Add Kubernetes repo
+      copy: src=./files/repo.list dest=/etc/yum.repos.d/kubernetes.repo
 
-    - name: Add k8s packages key
-      apt_key: url=https://packages.cloud.google.com/apt/doc/apt-key.gpg state=present
+    - name: Add containers repo
+      copy: src=./files/repo1.list dest=/etc/yum.repos.d/containers.repo
 
-    - name: Add Kubernetes apt list
-      copy: src=./files/kubernetes.list dest=/etc/apt/sources.list.d/kubernetes.list
+    - name: Add crio repo
+      copy: src=./files/repo2.list dest=/etc/yum.repos.d/crio.repo
 
-    - name: Update cache
-      apt: update_cache=yes
+    - name: upgrade all packages
+      yum: name=* state=latest update_cache=yes
 
-    - name: Upgrade
-      apt: upgrade=dist
+    - name: Load kernel modules at startup (shameslessly copy-paste from https://kubernetes.io/docs/setup/production-environment/container-runtimes/)
+      shell: |
+        cat <<EOF | sudo tee /etc/modules-load.d/crio.conf
+        overlay
+        br_netfilter
+        EOF
 
-    - name: install docker
-      apt: name=docker.io state=present
+    - name: Load kernel modules now
+      shell: modprobe overlay && modprobe br_netfilter
 
-    - name: install kubelet
-      apt: name=kubelet state=present
+    - name: Load systemctl params at startup
+      shell: |
+        cat <<EOF | sudo tee /etc/sysctl.d/99-kubernetes-cri.conf
+        net.bridge.bridge-nf-call-iptables  = 1
+        net.ipv4.ip_forward                 = 1
+        net.bridge.bridge-nf-call-ip6tables = 1
+        EOF
 
-    - name: install kubectl
-      apt: name=kubectl state=present
+    - name: Load systemctl params now
+      shell: sysctl --system
 
-    - name: install kubeadm
-      apt: name=kubeadm state=present
+    - name: install cri-o
+      yum: name=cri-o state=present
 
-    - name: install kubernetes-cni
-      apt: name=kubernetes-cni state=present
+    - name: Enable cri-o
+      ansible.builtin.systemd:
+        name: crio
+        state: started
+        enabled: yes
+
+    - name: install kube packages
+      yum:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+          - iproute-tc
+        disable_excludes: kubernetes
+        state: present
+
+    - name: Enable kubelet
+      ansible.builtin.systemd:
+        name: kubelet
+        state: started
+        enabled: yes
 
 - hosts: master
-  remote_user: ubuntu
+  remote_user: centos
   become: true
   tasks:
+    - name: Launch kubeadm in master
+      shell: "kubeadm config images pull"
 
     - name: Launch kubeadm in master
-      shell: "kubeadm init --api-advertise-addresses {{ ansible_eth0.ipv4.address }} |grep 'kubeadm join'"
+      shell: "kubeadm init --apiserver-advertise-address {{ ansible_eth0.ipv4.address }}"
+
+    - name: Get join command in master
+      shell: "kubeadm token create --print-join-command"
       register: output_kubeadm
 
     - set_fact:
         kubeadm_cmd: "{{output_kubeadm.stdout}}"
     - debug: msg="Output {{kubeadm_cmd}}"
 
-    - name: Use master as a minion too
-      command: kubectl taint nodes --all dedicated-
-
 - hosts: minions
-  remote_user: ubuntu
+  remote_user: centos
   become: true
   tasks:
+    - name: Change hostname
+      ansible.builtin.hostname:
+        name: k8sn{{groups['minions'].index(inventory_hostname)|int + 1}}
 
     - set_fact:
         kubeadm: "{{hostvars[groups['master'][0]].kubeadm_cmd}}"
@@ -158,9 +196,21 @@
       command: "{{kubeadm}}"
 
 - hosts: master
-  remote_user: ubuntu
+  remote_user: centos
   become: true
   tasks:
+    - name: Change hostname
+      ansible.builtin.hostname:
+        name: k8sm1
 
-    - name:  Installing a pod network
-      command: kubectl apply -f https://git.io/weave-kube
+    - name: Add Kubernetes repo
+      copy: src=./files/nginx.yaml dest=/tmp/nginx.yaml
+
+    - name: Create a valid kube config
+      command: mkdir -p $HOME/.kube && cp -i /etc/kubernetes/admin.conf $HOME/.kube/config && chown $(id -u):$(id -g) $HOME/.kube/config
+
+    - name: Installing an NGINX pod
+      command: kubectl apply -f /tmp/nginx.yaml
+
+    - name: Output the address
+      command: kubectl get pods --selector=app=nginx -o jsonpath='{.items[*].status.hostIP}'

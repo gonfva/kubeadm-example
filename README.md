@@ -6,25 +6,29 @@ Code to deploy a Kubernetes cluster in AWS using kubeadm.
 + No roles
 + No packer
 
-Implementation of
-
-http://kubernetes.io/docs/getting-started-guides/kubeadm/
-
-Not generic at all (I may expand it to make it more generic).
-
-## Requirements
-
-```
-sudo apt-get install python-pip ansible awscli
-pip install -U boto
-```
+This is not the way I would deploy things, but it is nice to practice
 
 ## Usage
 It's good practice to pass the name of the profile in our AWS credentials
 
 ```
-AWS_PROFILE=k8sgon ansible-playbook create_keypair.yml
+AWS_PROFILE=gonzalo_personal_projects ansible-playbook create_keypair.yml
 eval `ssh-agent -s`
 ssh-add ~/.ssh/k8s-keypair.pem
-AWS_PROFILE=k8sgon ansible-playbook create_cluster.yml
+AWS_PROFILE=gonzalo_personal_projects ansible-playbook create_cluster.yml
 ```
+
+## Room for improvement
+
+I prefer to use :
++ EKS
++ autoscaling groups.
++ ALB to connect to the instance instead of port in the machine.
++ (not to use) name for instances (pets vs cattle).
++ If we use names, we may want to use inventory (ansible mechanism).
++ Ansible roles instead of a big playbook
++ We may want at least variables.
++ There is no multi-AZ.
++ I prefer to have everything on private subnets and have public subnets with elastic load balancer in a public subnet connecting to the cluster and maybe a bastion host. In this example, all the instances have ips in a specific range but also a public IP.
+
+I just wanted to do a quick update of this old project and see if it is still relevant.
