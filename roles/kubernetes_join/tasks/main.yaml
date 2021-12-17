@@ -1,8 +1,15 @@
+- name: Check if we have initialized the node
+  stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: file_result
+
 - name: Set kubeadm command
   set_fact:
     kubeadm: "{{hostvars[groups['master'][0]].kubeadm_cmd}}"
 - name: Debug kubeadm command
   debug:
     msg: "Output {{kubeadm}}"
+
 - name: Join to master
   command: "{{kubeadm}}"
+  when: not file_result.stat.exists

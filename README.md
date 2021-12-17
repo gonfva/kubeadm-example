@@ -8,6 +8,15 @@ Code to deploy a Kubernetes cluster in AWS using kubeadm.
 
 This is not the way I would deploy things, but it is nice to practice
 
+## Build AMI
+
+Take a look at the file packer/region-dublin.json and change what is required. Then run
+```
+AWS_PROFILE=gonzalo_personal_projects packer build -var-file=packer/region-dublin.json packer/centos.json
+```
+
+Once you get a new AMI, you can change it in the infra role
+
 ## Usage
 It's good practice to pass the name of the profile in our AWS credentials
 

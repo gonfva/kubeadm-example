@@ -1,0 +1,8 @@
+{
+  "region": "eu-west-1",
+  "region_name": "Dublin",
+  "vpc": "vpc-d62f6bb3",
+  "subnet": "subnet-48220b2d",
+  "original_ami": "ami-0426e00f13491b715",
+  "key_name": "k8s-keypair"
+}

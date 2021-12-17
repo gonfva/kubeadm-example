@@ -74,7 +74,7 @@
     region: eu-west-1
     key_name: k8s-keypair
     instance_type: t3.small
-    image: ami-0426e00f13491b715 #Centos8 in Ireland
+    image: ami-0f6ac851567cee28d #CHANGEME
     wait: yes
     group: "K8s security group"
     vpc_subnet_id: "{{ subnet.subnet.id }}"
@@ -85,18 +85,34 @@
       Name: k8sserver
     exact_count: 3
   register: ec2
-- name: Get ips
-  set_fact:
-    ip_range: "{{ec2.tagged_instances.public_ip|sort}}"
 
-- name: Add new instances to launched group
-  add_host: hostname={{ item }} groupname=launched
-  with_items: "{{ip_range}}"
+- name: Get instances
+  set_fact:
+    instances: "{{ ec2.tagged_instances | sort(attribute='public_ip') }}"
+
 - name: Add new instance to master group
-  add_host: hostname={{ ip_range[0] }} groupname=master
+  add_host:
+    hostname: "{{ instances[0].public_ip }}"
+    private_ip: "{{instances[0].private_ip}}"
+    id: "{{instances[0].id}}"
+    groups:
+      - master
+      - launched
+
 - name: Add new instance to minions group
-  add_host: hostname={{ item }} groupname=minions
-  with_items: "{{ip_range[1:] }}"
+  add_host:
+    hostname: "{{ item.public_ip }}"
+    private_ip: "{{item.private_ip}}"
+    id: "{{item.id}}"
+    groups:
+      - minions
+      - launched
+  with_items: "{{instances[1:]}}"
+
 - name: Wait for SSH to come up
-  wait_for: host={{ item.public_dns_name }} port=22 timeout=480 state=started
-  with_items: "{{ec2.tagged_instances}}"
+  wait_for:
+    host: "{{ item.public_dns_name }}"
+    port: 22
+    timeout: 480
+    state: started
+  with_items: "{{instances}}"

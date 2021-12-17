@@ -20,3 +20,10 @@
       vars:
         hostname: k8sn{{groups['minions'].index(inventory_hostname)|int + 1}}
     - kubernetes_join
+
+- hosts: master
+  remote_user: centos
+  become: true
+  tasks:
+    - name: Output the address
+      command: kubectl get pods --selector=app=nginx -o jsonpath='{.items[*].status.hostIP}'
