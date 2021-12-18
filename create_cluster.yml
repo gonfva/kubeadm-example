@@ -10,9 +10,6 @@
   vars_files:
     - vars.yml
   roles:
-    - role: machines
-      vars:
-        hostname: k8sm1
     - kubernetes_ini
     - nginx
 
@@ -20,9 +17,6 @@
   remote_user: centos
   become: true
   roles:
-    - role: machines
-      vars:
-        hostname: k8sn{{groups['minions'].index(inventory_hostname)|int + 1}}
     - kubernetes_join
 
 - hosts: master
