@@ -2,9 +2,9 @@
   ec2_vpc_net:
     name: Kubeadm_vpc
     state: present
-    cidr_block: "10.144.0.0/16"
+    cidr_block: "{{vpc_cidr}}"
     resource_tags:
-      Name: k8s-vpc
+      name: k8s_vpc
     region: eu-west-1
   register: vpc
 
@@ -12,9 +12,9 @@
   ec2_vpc_subnet:
     state: present
     vpc_id: "{{ vpc.vpc.id }}"
-    cidr: 10.144.0.0/18
+    cidr: "{{subnet_cidr}}"
     tags:
-      Name: Kubeadm_subnet
+      name: Kubeadm_subnet
   register: subnet
 
 - name: Create a new IGW
@@ -48,8 +48,8 @@
     region: eu-west-1
     rules:
       - proto: tcp
-        from_port: 30000
-        to_port: 30000
+        from_port: "{{nodeport}}"
+        to_port: "{{nodeport}}"
         cidr_ip: 0.0.0.0/0
       - proto: tcp
         from_port: 22
@@ -74,15 +74,15 @@
     region: eu-west-1
     key_name: k8s-keypair
     instance_type: t3.small
-    image: ami-0f6ac851567cee28d #CHANGEME
+    image: "{{ami}}"
     wait: yes
     group: "K8s security group"
     vpc_subnet_id: "{{ subnet.subnet.id }}"
     assign_public_ip: yes
     instance_tags:
-      Name: k8sserver
+      name: k8sserver
     count_tag:
-      Name: k8sserver
+      name: k8sserver
     exact_count: 3
   register: ec2
 

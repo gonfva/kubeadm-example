@@ -1,6 +1,6 @@
 - name: Change hostname
   ansible.builtin.hostname:
-    name: "{{ name }}"
+    name: "{{ hostname }}"
 
 - name: Add host to /etc/hosts
   lineinfile:

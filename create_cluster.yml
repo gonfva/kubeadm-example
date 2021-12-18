@@ -1,10 +1,14 @@
 - hosts: localhost
+  vars_files:
+    - vars.yml
   roles:
     - infra
 
 - hosts: master
   remote_user: centos
   become: true
+  vars_files:
+    - vars.yml
   roles:
     - role: machines
       vars:
