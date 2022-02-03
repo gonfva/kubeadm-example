@@ -1,0 +1,26 @@
+- name: Check if we have initialized the cluster
+  stat:
+    path: $HOME/.kube
+  register: file_result
+
+- name: Launch kubeadm in master
+  shell: "kubeadm config images pull"
+  when: not file_result.stat.exists
+
+- name: Launch kubeadm in master
+  shell: "kubeadm init --apiserver-advertise-address {{ ansible_eth0.ipv4.address }}"
+  when: not file_result.stat.exists
+
+- name: Get join command in master
+  shell: "kubeadm token create --print-join-command"
+  register: output_kubeadm
+
+- name: Create a valid kube config
+  shell: |
+    mkdir -p $HOME/.kube
+    cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+    chown $(id -u):$(id -g) $HOME/.kube/config
+  when: not file_result.stat.exists
+
+- set_fact:
+    kubeadm_cmd: "{{output_kubeadm.stdout}}"

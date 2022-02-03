@@ -1,0 +1,46 @@
+- name: get my public IP
+  ipify_facts:
+
+- name: Basic cluster
+  terraform:
+    project_path: "roles/infra/files/"
+    state: present
+    force_init: yes
+    # variables:
+    #   vpc_cidr: "{{vpc_cidr}}"
+    #   subnet_cidr: "{{subnet_cidr}}"
+    #   ami: "{{ami}}"
+    #   nodeport: "{{nodeport}}"
+    #   accessip: "{{ipify_public_ip}}/32"
+  register: ec2
+
+- name: Get instances
+  set_fact:
+    instances: "{{ ec2.outputs.instances.value | sort(attribute='tags.Name') }}"
+
+- name: Add new instance to master group
+  add_host:
+    hostname: "{{ instances[0].public_ip }}"
+    private_ip: "{{instances[0].private_ip}}"
+    id: "{{instances[0].id}}"
+    groups:
+      - master
+      - launched
+
+- name: Add new instance to minions group
+  add_host:
+    hostname: "{{ item.public_ip }}"
+    private_ip: "{{item.private_ip}}"
+    id: "{{item.id}}"
+    groups:
+      - minions
+      - launched
+  with_items: "{{instances[1:]}}"
+
+- name: Wait for SSH to come up
+  wait_for:
+    host: "{{ item.public_ip }}"
+    port: 22
+    timeout: 480
+    state: started
+  with_items: "{{instances}}"

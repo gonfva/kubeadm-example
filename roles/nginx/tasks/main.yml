@@ -1,0 +1,5 @@
+- name: Add NGINX file
+  template: src=nginx.yaml dest=/tmp/nginx.yaml
+
+- name: Installing an NGINX pod
+  command: kubectl apply -f /tmp/nginx.yaml

@@ -1,0 +1,55 @@
+{
+  "variables": {
+    "aws_access_key": "",
+    "aws_secret_key": "",
+    "region": "",
+    "region_name": "",
+    "vpc": "",
+    "subnet": "",
+    "original_ami": "",
+    "k8s_version": "",
+    "key_name": ""
+  },
+  "builders": [
+    {
+      "type": "amazon-ebs",
+      "access_key": "{{user `aws_access_key`}}",
+      "secret_key": "{{user `aws_secret_key`}}",
+      "region": "{{user `region`}}",
+      "source_ami": "{{user `original_ami`}}",
+      "instance_type": "t3.small",
+      "ssh_username": "centos",
+      "ami_name": "Centos image with some K8s tools installed in the region {{user `region_name`}} created at {{isotime \"02-Jan-06 03-04-05\"}}",
+      "spot_price": "auto",
+      "spot_price_auto_product": "Linux/UNIX (Amazon VPC)",
+      "ssh_keypair_name": "{{user `key_name`}}",
+      "vpc_id": "{{user `vpc`}}",
+      "subnet_id": "{{user `subnet`}}",
+      "ssh_interface": "public_ip",
+      "ssh_agent_auth": true
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "file",
+      "source": "packer/files/",
+      "destination": "/tmp/"
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "sudo cp /tmp/repo.list /etc/yum.repos.d/kubernetes.repo",
+        "sudo cp /tmp/repo1.list /etc/yum.repos.d/containers.repo",
+        "sudo cp /tmp/repo2.list /etc/yum.repos.d/crio.repo",
+        "sudo cp /tmp/99-kubernetes-cri.conf /etc/sysctl.d/99-kubernetes-cri.conf",
+        "sudo cp /tmp/crio.conf /etc/modules-load.d/crio.conf",
+        "sudo sysctl --system",
+        "sudo yum update -y",
+        "sudo modprobe overlay && sudo modprobe br_netfilter",
+        "sudo yum install -y cri-o kubelet kubeadm kubectl iproute-tc --disableexcludes=kubernetes",
+        "sudo systemctl enable crio && sudo systemctl enable kubelet",
+        "sudo systemctl restart crio && sudo systemctl restart kubelet"
+      ]
+    }
+  ]
+}
